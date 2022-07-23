@@ -55,7 +55,7 @@ def retrieve_org_roam_id(file_path):
         
     return or_id
         
-def orgroam_to_denote_path(file_path):
+def orgroam_to_denote_filename(file_path):
     date = retrieve_denote_date(file_path)
     title, keywords = retrieve_title_filetags(file_path)
     denote_filename = f"{date}--{title}__{keywords}.org"
@@ -73,35 +73,39 @@ def build_org_roam_ids(path):
 
     return notes
 
-def correct_orgroam_links(file_path, notes_dict):
+def orgroam_to_denote(file_path, notes_dict):
     links_re = re.compile(r"\[\[id:(.*?)\]\[(.*?)\]\]")
-    with open(file_path, "r") as denote_file:
-        for l in denote_file:
-            shift = 0
-            print(f"current line: {l}")
-            for occurrence in links_re.finditer(l):
-                id = occurrence.group(1)
-                description = occurrence.group(2)
-                denote_link =  f"denote:{retrieve_denote_date(notes_dict[id])}"
-                l = l[:(shift + occurrence.start(1) - 3)] + denote_link + l[shift + occurrence.end(1):]
-                shift = shift + len(denote_link) - (occurrence.end(1) - occurrence.start(1) + 3)
-            print(f"new line: {l}")
-                
-                
-    
+    denote_path = TO_NOTES_DIR / orgroam_to_denote_filename(file_path)
+    with open(file_path, "r") as orgroam_file:
+        with open(denote_path, "w") as denote_file:
+            in_properties = False
+            for l in orgroam_file:
+                shift = 0
+                if re.match(r"^:PROPERTIES:", l):
+                    in_properties = True 
+                if re.match(r"^:END:", l):
+                    in_properties = False
+                    continue
+                if in_properties:
+                    continue
+                for occurrence in links_re.finditer(l):
+                    id = occurrence.group(1)
+                    description = occurrence.group(2)
+                    if not id in notes_dict:
+                        raise Exception(f"file: {file_path.name}, inexistent id in link: {id} ")
 
+                    denote_link =  f"denote:{retrieve_denote_date(notes_dict[id])}"
+                    l = l[:(shift + occurrence.start(1) - 3)] + denote_link + l[shift + occurrence.end(1):]
+                    shift = shift + len(denote_link) - (occurrence.end(1) - occurrence.start(1) + 3)
+                denote_file.write(l)
+                
+    print(f"Org-roam note {file_path.name} converted to denote")
     
 
 if __name__ == "__main__":    
     notes_dict = build_org_roam_ids(FROM_NOTES_DIR)
-    for roam_note in FROM_NOTES_DIR.glob("*kernels.org"):
-        denote_filename = orgroam_to_denote_path(roam_note) 
-        print(f"{roam_note.name} copied to {denote_filename}")
-        denote_note = TO_NOTES_DIR / denote_filename
-        shutil.copy(roam_note, denote_note)
-    notes_dict = build_org_roam_ids(FROM_NOTES_DIR)
-    for roam_note in FROM_NOTES_DIR.glob("*kernels.org"):
-        correct_orgroam_links(denote_note, notes_dict)
-#     print(f"title: {title}")
-#     print(f"filetags: {filetags}")
-#     print(f"org roam id: {or_id}")
+    for roam_note in FROM_NOTES_DIR.glob("*.org"):
+        orgroam_to_denote(roam_note, notes_dict)
+
+
+
